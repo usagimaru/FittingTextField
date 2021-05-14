@@ -21,7 +21,6 @@ class ViewController: NSViewController {
 		self.textField.addGestureRecognizer(clickRecognizer)
 		
 		self.textField.delegate = self
-		self.textField.stringValue = "Lorem ipsum"
 
 		self.textField.wantsLayer = true
 		self.textField.layer?.borderWidth = 1

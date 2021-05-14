@@ -37,6 +37,7 @@ public class FittingTextField: NSTextField {
 		self.cell?.wraps = true
 		self.lineBreakMode = .byTruncatingTail
 		
+		self.lastContentSize = size(self.stringValue)
 		if let placeholderString = self.placeholderString {
 			self.placeholderSize = size(placeholderString)
 		}
@@ -81,14 +82,29 @@ public class FittingTextField: NSTextField {
 	
 	public override var intrinsicContentSize: NSSize {
 		let intrinsicContentSize = super.intrinsicContentSize
-		let minSize = NSSize(width: ceil(self.placeholderSize?.width ?? 0), height: intrinsicContentSize.height)
+		
+		let minWidth: CGFloat!
+		if !self.stringValue.isEmpty {
+			minWidth = ceil(self.lastContentSize?.width ?? 0)
+		}
+		else {
+			minWidth = ceil(self.placeholderSize?.width ?? 0)
+		}
+		
+		let minSize = NSSize(width: minWidth, height: intrinsicContentSize.height)
 		
 		guard let fieldEditor = self.window?.fieldEditor(false, for: self) as? NSTextView
 		else {
+			if self.stringValue.isEmpty {
+				return minSize
+			}
 			return self.lastContentSize ?? minSize
 		}
 		
 		if !self.isEditing {
+			if self.stringValue.isEmpty {
+				return minSize
+			}
 			return self.lastContentSize ?? minSize
 		}
 		
