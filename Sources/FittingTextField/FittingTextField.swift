@@ -2,7 +2,7 @@
 
 import Cocoa
 
-class FittingTextField: NSTextField {
+public class FittingTextField: NSTextField {
 	
 	private(set) var isEditing = false
 	
@@ -29,7 +29,7 @@ class FittingTextField: NSTextField {
 		#endif
 	}
 	
-	override func awakeFromNib() {
+	public override func awakeFromNib() {
 		super.awakeFromNib()
 		
 		// If you use `.byClipping`, the width calculation does not seem to be done correctly.
@@ -42,12 +42,12 @@ class FittingTextField: NSTextField {
 		}
 	}
 	
-	override var placeholderString: String? { didSet {
+	public override var placeholderString: String? { didSet {
 		guard let placeholderString = self.placeholderString else { return }
 		self.placeholderSize = size(placeholderString)
 	}}
 	
-	override var stringValue: String { didSet {
+	public override var stringValue: String { didSet {
 		if self.isEditing {return}
 		self.lastContentSize = size(stringValue)
 	}}
@@ -59,7 +59,7 @@ class FittingTextField: NSTextField {
 		return NSSize(width: stringSize.width, height: super.intrinsicContentSize.height)
 	}
 	
-	override func textDidBeginEditing(_ notification: Notification) {
+	public override func textDidBeginEditing(_ notification: Notification) {
 		super.textDidBeginEditing(notification)
 		self.isEditing = true
 		
@@ -69,17 +69,17 @@ class FittingTextField: NSTextField {
 		}
 	}
 	
-	override func textDidEndEditing(_ notification: Notification) {
+	public override func textDidEndEditing(_ notification: Notification) {
 		super.textDidEndEditing(notification)
 		self.isEditing = false
 	}
 	
-	override func textDidChange(_ notification: Notification) {
+	public override func textDidChange(_ notification: Notification) {
 		super.textDidChange(notification)
 		self.invalidateIntrinsicContentSize()
 	}
 	
-	override var intrinsicContentSize: NSSize {
+	public override var intrinsicContentSize: NSSize {
 		let intrinsicContentSize = super.intrinsicContentSize
 		let minSize = NSSize(width: ceil(self.placeholderSize?.width ?? 0), height: intrinsicContentSize.height)
 		
