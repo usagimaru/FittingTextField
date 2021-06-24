@@ -6,8 +6,14 @@ public class FittingTextField: NSTextField {
 	
 	private(set) var isEditing = false
 	
-	private var placeholderSize: NSSize?
-	private var lastContentSize: NSSize?
+	private var placeholderSize: NSSize? { didSet {
+		if let placeholderSize_ = placeholderSize {
+			placeholderSize = NSSize(width: ceil(placeholderSize_.width), height: ceil(placeholderSize_.height))
+		}
+	}}
+	private var lastContentSize = NSSize() { didSet {
+		lastContentSize = NSSize(width: ceil(self.lastContentSize.width), height: ceil(self.lastContentSize.height))
+	}}
 	
 	override init(frame frameRect: NSRect) {
 		super.init(frame: frameRect)
@@ -82,11 +88,10 @@ public class FittingTextField: NSTextField {
 	
 	public override var intrinsicContentSize: NSSize {
 		let intrinsicContentSize = super.intrinsicContentSize
-		let lastContentSize = NSSize(width: ceil(self.lastContentSize?.width ?? 0), height: ceil(self.lastContentSize?.height ?? 0))
 		
 		let minWidth: CGFloat!
 		if !self.stringValue.isEmpty {
-			minWidth = lastContentSize.width
+			minWidth = self.lastContentSize.width
 		}
 		else {
 			minWidth = ceil(self.placeholderSize?.width ?? 0)
