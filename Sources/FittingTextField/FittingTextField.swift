@@ -82,10 +82,11 @@ public class FittingTextField: NSTextField {
 	
 	public override var intrinsicContentSize: NSSize {
 		let intrinsicContentSize = super.intrinsicContentSize
+		let lastContentSize = NSSize(width: ceil(self.lastContentSize?.width ?? 0), height: ceil(self.lastContentSize?.height ?? 0))
 		
 		let minWidth: CGFloat!
 		if !self.stringValue.isEmpty {
-			minWidth = ceil(self.lastContentSize?.width ?? 0)
+			minWidth = lastContentSize.width
 		}
 		else {
 			minWidth = ceil(self.placeholderSize?.width ?? 0)
@@ -95,17 +96,11 @@ public class FittingTextField: NSTextField {
 		
 		guard let fieldEditor = self.window?.fieldEditor(false, for: self) as? NSTextView
 		else {
-			if self.stringValue.isEmpty {
-				return minSize
-			}
-			return self.lastContentSize ?? minSize
+			return minSize
 		}
 		
 		if !self.isEditing {
-			if self.stringValue.isEmpty {
-				return minSize
-			}
-			return self.lastContentSize ?? minSize
+			return minSize
 		}
 		
 		if fieldEditor.string.isEmpty {
