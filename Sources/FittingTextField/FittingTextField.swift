@@ -4,16 +4,36 @@ import Cocoa
 
 public class FittingTextField: NSTextField {
 	
-	private(set) var isEditing = false
+	public override var focusRingMaskBounds: NSRect {
+		bounds
+	}
 	
 	private var placeholderSize: NSSize? { didSet {
 		if let placeholderSize_ = placeholderSize {
 			placeholderSize = NSSize(width: ceil(placeholderSize_.width), height: ceil(placeholderSize_.height))
 		}
 	}}
+	
 	private var lastContentSize = NSSize() { didSet {
-		lastContentSize = NSSize(width: ceil(self.lastContentSize.width), height: ceil(self.lastContentSize.height))
+		lastContentSize = NSSize(width: ceil(lastContentSize.width), height: ceil(lastContentSize.height))
 	}}
+	
+	public private(set) var isEditing = false
+	
+	public override var placeholderString: String? { didSet {
+		guard let placeholderString = placeholderString else { return }
+		placeholderSize = size(placeholderString)
+	}}
+	
+	public override var stringValue: String { didSet {
+		if isEditing {return}
+		lastContentSize = size(stringValue)
+	}}
+	
+	public private(set) var doubleClickRecognizer: NSClickGestureRecognizer!
+	
+	
+	// MARK: -
 	
 	override init(frame frameRect: NSRect) {
 		super.init(frame: frameRect)
@@ -27,11 +47,18 @@ public class FittingTextField: NSTextField {
 	
 	private func _init() {
 		// Receive text change notifications during Japanese input conversion (while `marked text` is present).
-		(self.cell as? NSTextFieldCell)?.setWantsNotificationForMarkedText(true)			
-				
+		(cell as? NSTextFieldCell)?.setWantsNotificationForMarkedText(true)
+		
+		// Setup double-click recognizer
+		doubleClickRecognizer = NSClickGestureRecognizer(target: self, action: #selector(doubleClicked(_:)))
+		doubleClickRecognizer.numberOfClicksRequired = 2
+		doubleClickRecognizer.delaysPrimaryMouseButtonEvents = false
+		doubleClickRecognizer.delegate = self
+		addGestureRecognizer(doubleClickRecognizer)
+		
 		#if DEBUG
-		//self.wantsLayer = true
-		//self.layer?.setBorder(with: NSColor.red.cgColor)
+		//wantsLayer = true
+		//layer?.setBorder(with: NSColor.red.cgColor)
 		#endif
 	}
 	
@@ -39,90 +66,169 @@ public class FittingTextField: NSTextField {
 		super.awakeFromNib()
 		
 		// If you use `.byClipping`, the width calculation does not seem to be done correctly.
-		self.cell?.isScrollable = true
-		self.cell?.wraps = true
-		self.lineBreakMode = .byTruncatingTail
+		cell?.isScrollable = true
+		cell?.wraps = true
+		lineBreakMode = .byTruncatingTail
 		
-		self.lastContentSize = size(self.stringValue)
-		if let placeholderString = self.placeholderString {
-			self.placeholderSize = size(placeholderString)
+		lastContentSize = size(stringValue)
+		if let placeholderString = placeholderString {
+			placeholderSize = size(placeholderString)
 		}
 	}
 	
-	public override var placeholderString: String? { didSet {
-		guard let placeholderString = self.placeholderString else { return }
-		self.placeholderSize = size(placeholderString)
-	}}
-	
-	public override var stringValue: String { didSet {
-		if self.isEditing {return}
-		self.lastContentSize = size(stringValue)
-	}}
-	
 	private func size(_ string: String) -> NSSize {
-		let font = self.font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+		let font = font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize, weight: .regular)
 		let stringSize = NSAttributedString(string: string, attributes: [.font : font]).size()
 		
 		return NSSize(width: stringSize.width, height: super.intrinsicContentSize.height)
 	}
 	
-	public override func textDidBeginEditing(_ notification: Notification) {
-		super.textDidBeginEditing(notification)
-		self.isEditing = true
+	public override var intrinsicContentSize: NSSize {
+		let intrinsicContentSize = super.intrinsicContentSize
+		
+		let minWidth = (stringValue.isEmpty == false)
+		? lastContentSize.width
+		: ceil(placeholderSize?.width ?? 0)
+		
+		let minSize = NSSize(width: minWidth, height: intrinsicContentSize.height)
+				
+		guard let fieldEditor = currentEditor() as? NSTextView
+		else { return minSize }
+		
+		if !isEditing {
+			return minSize
+		}
+		
+		if fieldEditor.string.isEmpty {
+			lastContentSize = minSize
+			return minSize
+		}
+		
+		let newWidth = ceil(size(stringValue).width)
+		let newSize = NSSize(width: newWidth, height: intrinsicContentSize.height)
+		
+		lastContentSize = newSize
 		
 		// This is a tweak to fix the problem of insertion points being drawn at the wrong position.
-		if let fieldEditor = self.window?.fieldEditor(false, for: self) as? NSTextView {
-			fieldEditor.insertionPointColor = NSColor.clear
+		fieldEditor.fixInsertionPointDisplaying()
+		
+		return newSize
+	}
+	
+	
+	// MARK: - Events
+	
+	/*
+	 Triggers to begin editing:
+	 - Double click
+	 - Force click
+	 - Becomes first responder
+	 - When focus() is called explicitly
+	 
+	 Triggers to end editing:
+	 - Received Return key event or editing successfully completed
+	 - Received cancelOperation() events
+	 - Received Tab key event (the focus is switched to another control)
+	 - Resigns first responder
+	 - When unfocus() is called explicitly
+	 - Other reasons
+	 */
+	
+	public override func textDidBeginEditing(_ notification: Notification) {
+		super.textDidBeginEditing(notification)
+		
+		isEditing = true
+		
+		// This is a tweak to fix the problem of insertion points being drawn at the wrong position.
+		if let fieldEditor = currentEditor() as? NSTextView {
+			fieldEditor.clearInsertionPoint()
 		}
 	}
 	
 	public override func textDidEndEditing(_ notification: Notification) {
 		super.textDidEndEditing(notification)
-		self.isEditing = false
+		
+		// Hmm... synchronous execution will not get out of the edit state properly, so make it asynchronous.
+		DispatchQueue.main.async {
+			self.isEditing = false
+			self.isEditable = false
+			self.window?.makeFirstResponder(nil)
+			
+			// Reset the cursor rects of own text field. (Prevent displaying an I-bean cursor when the control is not editable)
+			self.window?.invalidateCursorRects(for: self)
+		}
 	}
 	
 	public override func textDidChange(_ notification: Notification) {
 		super.textDidChange(notification)
-		self.invalidateIntrinsicContentSize()
+		invalidateIntrinsicContentSize()
 	}
 	
-	public override var intrinsicContentSize: NSSize {
-		let intrinsicContentSize = super.intrinsicContentSize
+	@objc public func doubleClicked(_ sender: NSClickGestureRecognizer) {
+		focus(self)
+	}
+	
+	public override func cancelOperation(_ sender: Any?) {
+		unfocus(self)
+	}
+	
+	/// Detect force touch event (Trackpad only)
+	public override func pressureChange(with event: NSEvent) {
+		super.pressureChange(with: event)
 		
-		let minWidth: CGFloat!
-		if !self.stringValue.isEmpty {
-			minWidth = self.lastContentSize.width
+		if event.stage == 2 {
+			// Ref: WWDC15 217 - Adopting New Trackpad Features
+			// 0 = gesture release
+			// 1 = click
+			// 2 = force click
+			
+			// Begin editing when the control is receiving force touch event
+			if isEditing == false {
+				focus(self)
+			}
 		}
-		else {
-			minWidth = ceil(self.placeholderSize?.width ?? 0)
+	}
+	
+	
+	// MARK: -
+	
+	@objc public func focus(_ sender: Any?) {
+		isEditable = true
+		isEditing = true
+		window?.makeFirstResponder(self)
+	}
+	
+	@objc public func unfocus(_ sender: Any?) {
+		if let fieldEditor = currentEditor() {
+			endEditing(fieldEditor)
 		}
-		
-		let minSize = NSSize(width: minWidth, height: intrinsicContentSize.height)
-		
-		guard let fieldEditor = self.window?.fieldEditor(false, for: self) as? NSTextView
-		else {
-			return minSize
+	}
+	
+}
+
+
+// MARK: - NSGestureRecognizerDelegate
+
+extension FittingTextField: NSGestureRecognizerDelegate {
+	
+	public func gestureRecognizer(_ gestureRecognizer: NSGestureRecognizer, shouldRequireFailureOf otherGestureRecognizer: NSGestureRecognizer) -> Bool {
+		if let gestureRecognizer = gestureRecognizer as? NSClickGestureRecognizer, gestureRecognizer.numberOfClicksRequired == 2 {
+			return true
 		}
-		
-		if !self.isEditing {
-			return minSize
-		}
-		
-		if fieldEditor.string.isEmpty {
-			self.lastContentSize = minSize
-			return minSize
-		}
-		
-		
-		// This is a tweak to fix the problem of insertion points being drawn at the wrong position.
-		fieldEditor.insertionPointColor = self.textColor ?? NSColor.textColor
-		
-		let newWidth = ceil(size(self.stringValue).width)
-		let newSize = NSSize(width: newWidth, height: intrinsicContentSize.height)
-		
-		self.lastContentSize = newSize
-		
-		return newSize
+		return false
+	}
+	
+}
+
+extension NSTextView {
+	
+	/// This is a tweak to fix the problem of insertion points being drawn at the wrong position.
+	func fixInsertionPointDisplaying() {
+		insertionPointColor = textColor ?? NSColor.textColor
+	}
+	
+	func clearInsertionPoint() {
+		insertionPointColor = NSColor.clear
 	}
 	
 }
